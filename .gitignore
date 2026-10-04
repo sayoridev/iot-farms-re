@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+
+# IDE e OS
+.idea/
+.vscode/
+.DS_Store
+
+# File temporanei / Log
+*.log
