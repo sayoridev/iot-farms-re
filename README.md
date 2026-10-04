@@ -53,6 +53,89 @@ The ESP32 continuously streams a 12-character hexadecimal ASCII string represent
 
 ---
 
+# Final Reverse Engineering Report – Keyestudio IoT Farm
+
+## 1. Executive Summary
+
+This document collects the results of the static analysis and reverse engineering performed on the Android application `com.keyestudio.IOTfarm`. The main objective was to decode the software architecture, network protocol, and control commands exchanged between the client application and the controller board (ESP32).
+
+---
+
+## 2. Application Details and Architecture
+
+- **Package Name:** `com.keyestudio.IOTfarm`
+- **Architecture:** Monolithic, based on a single Activity (`MainActivity`).
+- **Background Components:** No Background Service or registered Broadcast Receiver.
+- **Networking Libraries:** No third-party libraries are present (e.g., Retrofit, OkHttp, Paho MQTT). All communication is handled through the native `java.net.Socket` inside the dedicated `connectthread`.
+
+---
+
+## 3. Network Communication Protocol
+
+The application establishes a direct, unencrypted TCP socket (Raw TCP Socket) to the IoT controller.
+
+- **Default IP Address:** `192.168.3.2` (stored in SharedPreferences with the key `text1`).
+- **TCP Port:** `80`.
+- **Initial Handshake:** Immediately after opening the socket, the app sends the decimal byte `123` (ASCII character `{`) through the OutputStream to request that the ESP32 start streaming data.
+
+---
+
+## 4. Control Command Mapping (Client ➔ ESP32)
+
+All commands are sent as 2-character ASCII strings through `outputStream.write()`:
+
+| Hardware Component | GUI Event / Button | ASCII Command | Action Description |
+| :--- | :--- | :---: | :--- |
+| **LED Lighting** | `led_button` | `"as"` / `"As"` | Turn the LED ON (`"as"`) / OFF (`"As"`) |
+| **Irrigation Pump** | `watering_button` | `"bs"` | Activate the water pump |
+| **Fan** | `fan_button` | `"cs"` / `"Cs"` | Turn the fan ON (`"cs"`) / OFF (`"Cs"`) |
+| **Servo Motor (Door)** | `servo_button` | `"ds"` / `"Ds"` | Open (`"ds"`) / Close (`"Ds"`) the door |
+| **Buzzer / Melody** | `music_button` | `"es"` | Play an audio tone |
+
+---
+
+## 5. Sensor Telemetry Decoding (ESP32 ➔ Client)
+
+The ESP32 responds by continuously sending a byte stream formatted as an ASCII hexadecimal character string. The `dataHandle(String str)` method converts pairs of Hex characters into decimal integer values.
+
+**Packet structure (6 values, 12 Hex characters):**
+
+| Array Index (`intData`) | Measured Sensor | Unit | Parsing / GUI Formatting |
+| :---: | :--- | :---: | :--- |
+| `0` | Air Temperature | `°C` | `Integer.parseInt(hex[0..1], 16)` |
+| `1` | Air Humidity | `%` | `Integer.parseInt(hex[2..3], 16)` |
+| `2` | Soil Moisture | `%` | `Integer.parseInt(hex[4..5], 16)` |
+| `3` | Light Intensity | `%` | `Integer.parseInt(hex[6..7], 16)` |
+| `4` | Water Level | `%` | `Integer.parseInt(hex[8..9], 16)` |
+| `5` | Rain Sensor | `%` | `Integer.parseInt(hex[10..11], 16)` |
+
+---
+
+## 6. Security Vulnerabilities and Risks
+
+1. **Lack of Authentication:** Anyone connected to the ESP32 Wi-Fi subnet can connect to port 80 and send arbitrary commands to the actuators.
+2. **Cleartext Traffic:** Commands and telemetry are not protected by encryption (TLS/SSL).
+3. **Crash on Malformed Packets:** The direct use of `Integer.parseInt` without handling the `NumberFormatException` inside `dataHandle` makes the client vulnerable to a local Denial of Service (DoS) if non-hexadecimal data is sent.
+
+---
+
+## 7. Dynamic Field Validation
+
+The results of the static analysis of the Java source code were confirmed through dynamic testing using a Python simulator on TCP port 80.
+
+### Overlap Evidence
+
+- **Initial Handshake:** The Android application transmits the decimal value `123` (`{`) when the socket is opened, activating the telemetry stream.
+- **Telemetry Format:** The app correctly receives and processes 12-character hexadecimal strings (e.g., `193C324B5000` → 25°C temperature, 60% humidity, 50% soil moisture, 75% light, 80% water level, 0% rain).
+- **Confirmed Command Map:** All user interface buttons send the 2-character ASCII codes identified during decompilation:
+  - `as` / `As`: LED ON / OFF
+  - `bs`: Irrigation ON
+  - `cs` / `Cs`: Fan ON / OFF
+  - `ds` / `Ds`: Servo Open / Closed
+  - `es`: Buzzer Active
+
+---
+
 ## 📄 License & Disclaimer
 
 This project is created strictly for educational, security research, and interoperability purposes. All product names, trademarks, and registered trademarks belong to their respective owners.
