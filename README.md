@@ -15,7 +15,7 @@ This repository provides full protocol specifications, vulnerability assessments
 iot-farms-re/
 ├── REVERSE_ENGINEERING_REPORT.md   # Detailed technical report and analysis
 ├── iot_farm_sim.py                 # ESP32 server simulator & test client
-├── farm_ctl.py                     # Standalone CLI tool to control the farm directly
+├── decompiled/                     # Decompiled code
 └── .gitignore                      # Git ignore rules
 ```
 
